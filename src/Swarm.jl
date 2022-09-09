@@ -6,6 +6,9 @@ mutable struct Swarm{T<:AbstractFloat}
     nVec::Vector{Int}
 
     # Global best objective function value
+    b::T
+
+    # Location of global best objective function value
     d::Vector{T}
 
     # Neighborhood size
@@ -196,7 +199,7 @@ function uniformInitialization!(swarm::Swarm, prob::Problem, opts::SwarmOptions)
             # Get local bounds for d-axis
             lLB = useInitBnds ? (LB[d] < iLB[d] ? iLB[d] : LB[d]) : LB[d]
             lUB = useInitBnds ? (UB[d] > iUB[d] ? iUB[d] : UB[d]) : UB[d]
-            for p in eachindex(s)
+            for p in eachindex(swarm)
                 # Position information
                 swarm[p].x[d] = lLB + (lUB - lLB)*rand()
                 swarm[p].p[d] = swarm[p].x[d]
