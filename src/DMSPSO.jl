@@ -273,7 +273,7 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
 
     # Check for stopping conditions (Total max time option not added yet)
     stop = false
-    if time() - total_t0 > Inf || mspso.resetCount >= opts.maxResets 
+    if time() - total_t0 > opts.maxTotalTime || mspso.resetCount >= opts.maxResets 
         stop = true
     end
 
@@ -339,20 +339,10 @@ function computeResets(mspso, opts, buffer)
     numprocs = MPI.Comm_size(MPI.COMM_WORLD)
     resets = Vector{Bool}(undef, numprocs)
 
-    # Find best swarm (This swarm will be immune from getting reset)
-    N       = length(mspso.prob.LB)
-    bestF   = Inf
-    bestI   = 0
-    for i in 1:numprocs
-        if buffer[N + 1, i] < bestF
-            bestF = buffer[N + 1, i]
-            bestI = i
-        end
-    end
-
     # Set resets best on criteria not involving distance
+    N = length(mspso.prob.LB)
     for i in eachindex(resets)
-        if i != bestI && buffer[N + 2, i] > 0.9
+        if buffer[N + 2, i] > 0.9
             resets[i] = true
         else
             resets[i] = false
@@ -371,18 +361,12 @@ function computeResets(mspso, opts, buffer)
 
                 # Check if distance is smaller than reset distance
                 if dist < opts.resetDistance
-                    if bestI == i # Check if i is bestI
+                    fi = buffer[N + 1, i]
+                    fj = buffer[N + 1, j]
+                    if fi < fj 
                         resets[j] = true
-                    elseif bestI == j # Check if j is bestI
+                    else
                         resets[i] = true
-                    else # Reset based on best fval
-                        fi = buffer[N + 1, i]
-                        fj = buffer[N + 1, j]
-                        if fi < fj 
-                            resets[j] = true
-                        else
-                            resets[i] = true
-                        end
                     end
                 end
             end
