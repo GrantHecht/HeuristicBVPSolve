@@ -81,6 +81,9 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
     if solOutFile == "NoFileOutput"
         fileOutput = false
     end
+    if fileOutput == true && MPI.Comm_rank(MPI.COMM_WORLD) == 0
+        close(open(solOutFile, "w"))
+    end
 
     # If multithreading is on, check that we have acces to multiple threads
     if useParallel == true

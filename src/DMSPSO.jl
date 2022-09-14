@@ -2,9 +2,9 @@
 abstract type MSPSO end
 
 # DMSPSO - {D}istributed {M}ulti-{S}warm {P}article {S}warm {O}ptimization
-mutable struct DMSPSO{T,S,fType, C} <: MSPSO
-    # Optimization problem
-    prob::Problem{fType, S}
+mutable struct DMSPSO{T,S,fType,nleqsType,C} <: MSPSO
+    # NL Problem struct
+    prob::Problem{fType, nleqsType, S}
 
     # Process rank
     rank::Int
@@ -42,9 +42,9 @@ mutable struct StatusPacket{T}
 end
 
 # Constructor
-function DMSPSO(prob::Problem{fType,S}; numParticlesPerSwarm, inertiaRange = (0.1, 1.1),
+function DMSPSO(prob::Problem{fType,nleqsType,S}; numParticlesPerSwarm, inertiaRange = (0.1, 1.1),
         minNeighborFrac = 0.25, selfAdjustWeight = 1.49, socialAdjustWeight = 1.49, 
-        commIterationBuffer = 1, rngSeed = nothing, comm = MPI.COMM_WORLD) where {S,fType}
+        commIterationBuffer = 1, rngSeed = nothing, comm = MPI.COMM_WORLD) where {S,fType,nleqsType}
 
     # Error checking
     length(inertiaRange) == 2 || throw(ArgumentError("inertiaRange must be of length 2."))
@@ -69,7 +69,7 @@ function DMSPSO(prob::Problem{fType,S}; numParticlesPerSwarm, inertiaRange = (0.
     N       = length(prob.LB)
     swarm   = Swarm{T}(N, numParticlesPerSwarm)
 
-    DMSPSO{T,S,fType, C}(prob, rank, swarm, 0, nIRange, minNeighborFrac, 
+    DMSPSO{T,S,fType,nleqsType,C}(prob, rank, swarm, 0, nIRange, minNeighborFrac, 
         selfAdjustWeight, socialAdjustWeight, commIterationBuffer, comm)
 end
 

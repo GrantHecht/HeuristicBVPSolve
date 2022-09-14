@@ -1,18 +1,20 @@
-struct Problem{fType<:Function, S}
-    f::fType # Objective function
+struct Problem{fType<:Function, nleqsType<:Function, S}
+    f::fType            # Objective function
+    nleqs!::nleqsType   # Nonlinear equations
 
     LB::Vector{S}
     UB::Vector{S}
 end
 
 # If LB and UB are not specified, use default of +/- 1000
-function Problem(objFunc, numVars)
+function Problem(objFunc, nleqs!, numVars)
 
     # Check that nDims > 0
     numVars > 0 || throw(ArgumentError("N must be greater than zero."))
 
     # Get types
-    fType = typeof(objFunc)
+    fType       = typeof(objFunc)
+    nleqsType   = typeof(nleqs!)
 
     # Initialize lower and upper bounds
     LB = Vector{Int}(undef, numVars)
@@ -22,7 +24,7 @@ function Problem(objFunc, numVars)
         UB[i] = 1000
     end
 
-    return Problem{fType,Int}(objFunc, LB, UB)
+    return Problem{fType,nleqsType,Int}(objFunc, nleqs!, LB, UB)
 end
 
 function Problem{S}(objFunc, LB, UB) where {S}

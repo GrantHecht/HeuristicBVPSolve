@@ -16,8 +16,9 @@ function main()
     prob = Problem(psoCost, [-50, -50], [50, 50])
 
     # Set swarm options
-    options = SwarmOptions(;display=true, resetDistance=0.1, maxResets=25,
-        solOutFile = "/Users/granthec/.julia/dev/HeuristicNLSolve/scripts/test.txt")
+    options = SwarmOptions(;display=true, resetDistance=0.1, maxResets=100000,
+        maxTotalTime    = 10.0,
+        solOutFile      = "/Users/granthec/.julia/dev/HeuristicNLSolve/scripts/test.txt")
 
     # Instantiate DMSPSO
     mspso   = DMSPSO(prob; numParticlesPerSwarm = 50, commIterationBuffer = 5) 
