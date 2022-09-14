@@ -46,6 +46,9 @@ struct SwarmOptions{T<:AbstractFloat, U<:AbstractVector, CF<:Union{Function,Noth
     # File output flag
     fileOutput::Bool
 
+    # Communicate with solver proc
+    solverComm::Bool
+
     # Solution output file
     solOutFile::String
 end
@@ -54,7 +57,7 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
     funValCheck=true, iUB::Uu=nothing, iLB::Ul=nothing, maxIters=1000,
     maxStallIters=25, maxStallTime::T=500.0, maxTime::T=1800.0, objLimit::T=-Inf, 
     useParallel=false, callback::CF=nothing, resetDistance::T=1.0, maxResets=25,
-    solOutFile="NoFileOutput", maxTotalTime::T=3600.0) where 
+    solOutFile="NoFileOutput", solverComm=false, maxTotalTime::T=3600.0) where 
     {T<:AbstractFloat, Uu<:Union{Nothing,Vector}, Ul<:Union{Nothing,Vector},
      CF<:Union{Nothing, Function}}
 
@@ -75,13 +78,6 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
     if solOutFile == "NoFileOutput"
         fileOutput = false
     end
-    if fileOutput == true && MPI.Comm_rank(MPI.COMM_WORLD) == 0
-        if isfile(solOutFile)
-            @warn "Solution output files already exists and will be overwritten!"
-            rm(solOutFile)
-        end
-        touch(solOutFile)
-    end
 
     # If multithreading is on, check that we have acces to multiple threads
     if useParallel == true
@@ -94,5 +90,5 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
     return SwarmOptions{T,U,CF}(display, displayInterval, funcTol,
         funValCheck, iUB, iLB, maxIters, maxStallIters, maxStallTime,
         maxTime, maxTotalTime, objLimit, useParallel, callback, 
-        resetDistance, maxResets, fileOutput, solOutFile)
+        resetDistance, maxResets, fileOutput, solverComm, solOutFile)
 end

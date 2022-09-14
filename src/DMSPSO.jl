@@ -2,7 +2,7 @@
 abstract type MSPSO end
 
 # DMSPSO - {D}istributed {M}ulti-{S}warm {P}article {S}warm {O}ptimization
-mutable struct DMSPSO{T,S,fType} <: MSPSO
+mutable struct DMSPSO{T,S,fType, C} <: MSPSO
     # Optimization problem
     prob::Problem{fType, S}
 
@@ -21,6 +21,9 @@ mutable struct DMSPSO{T,S,fType} <: MSPSO
     selfAdjustWeight::T
     socialAdjustWeight::T
     commIterationBuffer::Int
+
+    # MPI Swarm Communicator
+    swarmComm::C
 end
 
 # DMSPSO Status Packet
@@ -41,14 +44,14 @@ end
 # Constructor
 function DMSPSO(prob::Problem{fType,S}; numParticlesPerSwarm, inertiaRange = (0.1, 1.1),
         minNeighborFrac = 0.25, selfAdjustWeight = 1.49, socialAdjustWeight = 1.49, 
-        commIterationBuffer = 1, rngSeed = nothing) where {S,fType}
+        commIterationBuffer = 1, rngSeed = nothing, comm = MPI.COMM_WORLD) where {S,fType}
 
     # Error checking
     length(inertiaRange) == 2 || throw(ArgumentError("inertiaRange must be of length 2."))
     minNeighborFrac > 0       || throw(ArgumentError("minNeighborFrac must be > 0."))
 
     # Get process rank
-    rank = MPI.Comm_rank(MPI.COMM_WORLD)
+    rank = MPI.Comm_rank(comm)
 
     # Set process RNG seed
     if rngSeed === nothing
@@ -59,14 +62,15 @@ function DMSPSO(prob::Problem{fType,S}; numParticlesPerSwarm, inertiaRange = (0.
 
     # Type info
     T       = typeof(1.0)
+    C       = typeof(comm)
     nIRange = (T(inertiaRange[1]), T(inertiaRange[2]))
 
     # Initialize swarm
     N       = length(prob.LB)
     swarm   = Swarm{T}(N, numParticlesPerSwarm)
 
-    DMSPSO{T,S,fType}(prob, rank, swarm, 0, nIRange, minNeighborFrac, 
-        selfAdjustWeight, socialAdjustWeight, commIterationBuffer)
+    DMSPSO{T,S,fType, C}(prob, rank, swarm, 0, nIRange, minNeighborFrac, 
+        selfAdjustWeight, socialAdjustWeight, commIterationBuffer, comm)
 end
 
 # Methods
@@ -121,7 +125,7 @@ function iterate!(mspso::DMSPSO, opts::SwarmOptions)
 
     # Instantiate status packet (only used by master proc)
     if mspso.rank == 0
-        statusPack = StatusPacket(MPI.Comm_size(MPI.COMM_WORLD))
+        statusPack = StatusPacket(MPI.Comm_size(mspso.swarmComm))
     else
         statusPack = StatusPacket(0)
     end
@@ -129,7 +133,7 @@ function iterate!(mspso::DMSPSO, opts::SwarmOptions)
     # Allocate buffer for communication
     N           = length(mspso.prob.LB)
     if mspso.rank == 0
-        buffer = zeros(N + 2, MPI.Comm_size(MPI.COMM_WORLD))
+        buffer = zeros(N + 2, MPI.Comm_size(mspso.swarmComm))
     else
         buffer = zeros(N + 2, 1)
     end
@@ -218,7 +222,7 @@ function iterate!(mspso::DMSPSO, opts::SwarmOptions)
         comm_iters += 1
 
         # Print it master proc
-        if mspso.rank == 0
+        if mspso.rank == 0 && opts.display == true
             printStatus(statusPack, comm_iters, (time() - total_t0)/3600.0)
         end
 
@@ -249,11 +253,11 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
     localBuffer = @view(buffer[:,1])
 
     # Get number of processes
-    numprocs    = MPI.Comm_size(MPI.COMM_WORLD)
+    numprocs    = MPI.Comm_size(mspso.swarmComm)
 
     # Request info from each process and place in buffer
     for i in 1:numprocs - 1
-        data, status = MPI.Recv!(localBuffer, MPI.COMM_WORLD, MPI.Status)
+        data, status = MPI.Recv!(localBuffer, mspso.swarmComm, MPI.Status)
         buffer[:,status.tag + 1] .= localBuffer
     end
     N                = length(mspso.prob.LB)
@@ -277,10 +281,10 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
         stop = true
     end
 
-    # Write to file if desired
-    if opts.fileOutput
-        writeToFile(mspso, opts, resets, buffer; stop = stop)
-    end
+    # Process new solutions from resets
+    #   Writes new solutions to file and send them to solver 
+    #   if desired
+    processSolutions(mspso, opts, resets, buffer; stop = stop)
 
     # Update statusPack
     fbest = Inf
@@ -298,11 +302,11 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
     # Send status flags
     for i in 1:numprocs - 1
         if stop == true
-            MPI.Send(STOP, MPI.COMM_WORLD; dest = i)
+            MPI.Send(STOP, mspso.swarmComm; dest = i)
         elseif resets[i] == false
-            MPI.Send(CONTINUE, MPI.COMM_WORLD; dest = i)
+            MPI.Send(CONTINUE, mspso.swarmComm; dest = i)
         else
-            MPI.Send(RESET, MPI.COMM_WORLD; dest = i)
+            MPI.Send(RESET, mspso.swarmComm; dest = i)
         end
     end
     
@@ -325,10 +329,10 @@ function communicateWorker!(mspso, opts, resetFlag, buffer)
     buffer[N + 2]   = (resetFlag == true ? 1.0 : 0.0)
 
     # Send buffer to master
-    MPI.Send(buffer, MPI.COMM_WORLD; dest = 0, tag = mspso.rank)
+    MPI.Send(buffer, mspso.swarmComm; dest = 0, tag = mspso.rank)
 
     # Recieve reset message from master
-    flag::Int = MPI.Recv(Int, MPI.COMM_WORLD; source = 0) 
+    flag::Int = MPI.Recv(Int, mspso.swarmComm; source = 0) 
     return flag
 end
 
@@ -336,7 +340,7 @@ end
 # swarm should be reset
 function computeResets(mspso, opts, buffer)
     # Instantiate vector of bools
-    numprocs = MPI.Comm_size(MPI.COMM_WORLD)
+    numprocs = MPI.Comm_size(mspso.swarmComm)
     resets = Vector{Bool}(undef, numprocs)
 
     # Set resets best on criteria not involving distance
@@ -376,29 +380,66 @@ function computeResets(mspso, opts, buffer)
     return resets
 end
 
-function writeToFile(mspso, opts, resets, buffer; stop = false)
+function processSolutions(mspso, opts, resets, buffer; stop = false)
     if stop == false
         # Check to see if we have any resets occuring
         if any(resets) 
-            # Open file
-            f   = open(opts.solOutFile, "a")
+            # Write to file if desired
+            if opts.fileOutput == true
+                # Open file
+                f   = open(opts.solOutFile, "a")
 
-            # Write to file
-            N   = length(mspso.prob.LB)
-            for i in eachindex(resets)
-                if resets[i] == true
-                    writedlm(f, Transpose(@view(buffer[1:N+1,i])), ",")
+                # Write to file
+                N   = length(mspso.prob.LB)
+                for i in eachindex(resets)
+                    if resets[i] == true
+                        writedlm(f, Transpose(@view(buffer[1:N+1,i])), ",")
+                    end
+                end
+                close(f)
+            end
+
+            # Send new solutions to solver process
+            if opts.solverComm == true
+                # Send number of new solutions
+                MPI.Send(sum(resets), MPI.COMM_WORLD; 
+                    dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+
+                # Send solutions
+                for i in eachindex(resets)
+                    if resets[i] == true
+                        MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD;
+                            dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+                    end
                 end
             end
-            close(f)
         end
     else
-        # Write all final swarm solutions to file
-        f = open(opts.solOutFile, "a")
-        N = length(mspso.prob.LB)
-        writedlm(f, Transpose(@view(buffer[1:N+1,:])), ",")
-        write(f, "DONE\n")
-        close(f)
+        # Write all final swarm solutions to file if desired
+        if opts.fileOutput == true
+            f = open(opts.solOutFile, "a")
+            N = length(mspso.prob.LB)
+            writedlm(f, Transpose(@view(buffer[1:N+1,:])), ",")
+            write(f, "DONE\n")
+            close(f)
+        end
+
+        # Send all final swarm solutions to solver process
+        if opts.solverComm == true
+            # Send the number of swarms
+            MPI.Send(MPI.Comm_size(mspso.swarmComm), MPI.COMM_WORLD;
+                dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+
+            # Send each solution
+            for i in 1:MPI.Comm_size(mspso.swarmComm)
+                MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD;
+                    dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+            end
+
+            # Notify solver process that we're finished over here
+            MPI.Send(STOP, MPI.COMM_WORLD;
+                dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+        end
     end
     return nothing
 end

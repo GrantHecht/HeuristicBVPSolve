@@ -5,6 +5,7 @@ import Random: shuffle!, seed!
 import LinearAlgebra: Transpose
 
 # Message integer flags
+const SENDING = 2
 const RESET = 1
 const CONTINUE = 0
 const STOP  = -1
