@@ -76,11 +76,22 @@ end
 # Methods
 optimize!(alg, opts) = _optimize!(alg, opts)
 function _optimize!(mspso::DMSPSO, opts::SwarmOptions)
+    # Check communication
+    checkComm(mspso, opts)
+
     # Initialize swarms
     initialize!(mspso, opts)
 
     # Perform iteration
     iterate!(mspso, opts)
+end
+
+# Function to check all communication to try and avoid deadlocks
+#   Currently, this will definitely not catch all problems but
+#   hopefully it will avoid some.
+function checkComm(mspso::DMSPSO, opts::SwarmOptions)
+    # Need to add checks but will need to think on this a bit...
+    return nothing
 end
 
 function initialize!(mspso::DMSPSO, opts::SwarmOptions)
@@ -402,14 +413,12 @@ function processSolutions(mspso, opts, resets, buffer; stop = false)
             # Send new solutions to solver process
             if opts.solverComm == true
                 # Send number of new solutions
-                MPI.Send(sum(resets), MPI.COMM_WORLD; 
-                    dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+                MPI.Send(sum(resets), MPI.COMM_WORLD; dest = opts.solverRank)
 
                 # Send solutions
                 for i in eachindex(resets)
                     if resets[i] == true
-                        MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD;
-                            dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+                        MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD; dest = opts.solverRank)
                     end
                 end
             end
@@ -427,18 +436,15 @@ function processSolutions(mspso, opts, resets, buffer; stop = false)
         # Send all final swarm solutions to solver process
         if opts.solverComm == true
             # Send the number of swarms
-            MPI.Send(MPI.Comm_size(mspso.swarmComm), MPI.COMM_WORLD;
-                dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+            MPI.Send(MPI.Comm_size(mspso.swarmComm), MPI.COMM_WORLD; dest = opts.solverRank)
 
             # Send each solution
             for i in 1:MPI.Comm_size(mspso.swarmComm)
-                MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD;
-                    dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+                MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD; dest = opts.solverRank)
             end
 
             # Notify solver process that we're finished over here
-            MPI.Send(STOP, MPI.COMM_WORLD;
-                dest = MPI.Comm_size(MPI.COMM_WORLD) - 1)
+            MPI.Send(STOP, MPI.COMM_WORLD; dest = opts.solverRank)
         end
     end
     return nothing

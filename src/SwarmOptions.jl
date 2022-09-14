@@ -49,6 +49,9 @@ struct SwarmOptions{T<:AbstractFloat, U<:AbstractVector, CF<:Union{Function,Noth
     # Communicate with solver proc
     solverComm::Bool
 
+    # Solver rank
+    solverRank::Int
+
     # Solution output file
     solOutFile::String
 end
@@ -57,7 +60,7 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
     funValCheck=true, iUB::Uu=nothing, iLB::Ul=nothing, maxIters=1000,
     maxStallIters=25, maxStallTime::T=500.0, maxTime::T=1800.0, objLimit::T=-Inf, 
     useParallel=false, callback::CF=nothing, resetDistance::T=1.0, maxResets=25,
-    solOutFile="NoFileOutput", solverComm=false, maxTotalTime::T=3600.0) where 
+    solOutFile="NoFileOutput", solverComm=false, solverRank=-1, maxTotalTime::T=3600.0) where 
     {T<:AbstractFloat, Uu<:Union{Nothing,Vector}, Ul<:Union{Nothing,Vector},
      CF<:Union{Nothing, Function}}
 
@@ -86,9 +89,15 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
             useParallel = false
         end
     end
+
+    # If communicating with solver and solver rank unset, default to largest rank in MPI.COMM_WORLD
+    if solverComm == true && solverRank == -1
+        solverRank = MPI.Comm_size(MPI.COMM_WORLD) - 1
+    end
         
     return SwarmOptions{T,U,CF}(display, displayInterval, funcTol,
         funValCheck, iUB, iLB, maxIters, maxStallIters, maxStallTime,
         maxTime, maxTotalTime, objLimit, useParallel, callback, 
-        resetDistance, maxResets, fileOutput, solverComm, solOutFile)
+        resetDistance, maxResets, fileOutput, solverComm, solverRank, 
+        solOutFile)
 end
