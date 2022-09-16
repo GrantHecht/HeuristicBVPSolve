@@ -61,7 +61,7 @@ function start!(s::SolverServer, opts::SolverOptions)
                 MPI.Recv!(buffer, MPI.COMM_WORLD)
 
                 # Spawn new task and place in queue
-                push!(s.tasks, Threads.@spawn(solve!($buffer, $s.prob.nleqs!, opts)))
+                push!(s.tasks, Threads.@spawn(solve!(deepcopy(buffer), s.prob.nleqs!, opts)))
             end
         else
             stopMsgRecved = true
@@ -87,6 +87,7 @@ function solve!(x0, nleqs!::Function, opts::SolverOptions)
     # Write solution to file
     if opts.solOutputFlag == true
         f = open(opts.solOutputFile, "a")
+        println(f, "Success: $(sol.f_converged), Initial Guess: $x0")
         writedlm(f, Transpose(sol.zero), ",")
         close(f)
     end
