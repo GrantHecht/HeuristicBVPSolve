@@ -54,15 +54,18 @@ struct SwarmOptions{T<:AbstractFloat, U<:AbstractVector, CF<:Union{Function,Noth
 
     # Solution output file
     solOutFile::String
+
+    # Print debug info
+    printDebugInfo::Bool
 end
 
 function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
     funValCheck=true, iUB::Uu=nothing, iLB::Ul=nothing, maxIters=1000,
     maxStallIters=25, maxStallTime::T=500.0, maxTime::T=1800.0, objLimit::T=-Inf, 
     useParallel=false, callback::CF=nothing, resetDistance::T=1.0, maxResets=25,
-    solOutFile="NoFileOutput", solverComm=false, solverRank=-1, maxTotalTime::T=3600.0) where 
-    {T<:AbstractFloat, Uu<:Union{Nothing,Vector}, Ul<:Union{Nothing,Vector},
-     CF<:Union{Nothing, Function}}
+    solOutFile="NoFileOutput", solverComm=false, solverRank=-1, maxTotalTime::T=3600.0,
+    printDebugInfo=false) where {T<:AbstractFloat, Uu<:Union{Nothing,Vector}, 
+                                 Ul<:Union{Nothing,Vector}, CF<:Union{Nothing, Function}}
 
     U = Vector{T} 
     if iUB === nothing
@@ -102,5 +105,5 @@ function SwarmOptions(;display=false, displayInterval=1, funcTol::T=1e6,
         funValCheck, iUB, iLB, maxIters, maxStallIters, maxStallTime,
         maxTime, maxTotalTime, objLimit, useParallel, callback, 
         resetDistance, maxResets, fileOutput, solverComm, solverRank, 
-        solOutFile)
+        solOutFile, printDebugInfo)
 end

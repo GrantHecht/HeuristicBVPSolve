@@ -59,9 +59,10 @@ function start!(s::SolverServer, opts::SolverOptions)
             # Loop to recieve all messages
             for i in 1:msg
                 MPI.Recv!(buffer, MPI.COMM_WORLD)
+                println(buffer)
 
                 # Spawn new task and place in queue
-                push!(s.tasks, Threads.@spawn(solve!(deepcopy(buffer), s.prob.nleqs!, opts)))
+                push!(s.tasks, Threads.@spawn(solve!($(deepcopy(buffer)), $(s.prob.nleqs!), $opts)))
             end
         else
             stopMsgRecved = true
@@ -69,6 +70,11 @@ function start!(s::SolverServer, opts::SolverOptions)
 
         # Cleanup task queue
         cleanUp!(s.tasks)
+
+        # Write debug info
+        if opts.printDebugInfo == true
+            printDebugInfo(s, opts)
+        end
 
         # If stop message has been recieved, wait for all tasks to finish
         # and then exit loop
@@ -91,5 +97,20 @@ function solve!(x0, nleqs!::Function, opts::SolverOptions)
         writedlm(f, Transpose(sol.zero), ",")
         close(f)
     end
+    return nothing
+end
+
+function printDebugInfo(s::SolverServer, opts)
+    # Output file
+    file = "./debug_info_solver_server.txt"
+    isfile(file) && touch(file)
+
+    # Write to file
+    f = open(file, "a")
+
+    out = read(`top -bn1 -p $(getpid())`, String)
+    print(f, out * "\n\n")
+    
+    close(f)
     return nothing
 end

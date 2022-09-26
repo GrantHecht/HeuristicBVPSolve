@@ -232,9 +232,14 @@ function iterate!(mspso::DMSPSO, opts::SwarmOptions)
         # Increment communication iteration counter
         comm_iters += 1
 
-        # Print it master proc
+        # Print on master proc
         if mspso.rank == 0 && opts.display == true
             printStatus(statusPack, comm_iters, (time() - total_t0)/3600.0)
+        end
+
+        # Print debug information
+        if opts.printDebugInfo == true
+            printDebugInfo(mspso,opts)
         end
 
         # Reset or stop if commanded
@@ -496,5 +501,20 @@ function printStatus(statusPack::StatusPacket, iter, time)
     printfmtln(fspec2, statusPack.globalBest, statusPack.swarmBests...)
     printfmtln(fspec3, totalResets, statusPack.swarmResets...)
     println("")
+    return nothing
+end
+
+function printDebugInfo(mspso::DMSPSO, opts)
+    # Output file name  
+    fileName = "./dmspso_debug_info_rank" * string(MPI.Comm_rank(mspso.swarmComm)) * ".txt"
+    isfile(fileName) && touch(fileName)
+
+    # Write to file
+    f = open(fileName, "a")
+
+    out = read(`top -bn1 -p $(getpid())`, String)
+    print(f, out * "\n\n")
+    
+    close(f)
     return nothing
 end
