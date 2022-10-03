@@ -1,6 +1,6 @@
 module HeuristicNLSolve
 
-using MPI, NLsolve, Format, DelimitedFiles
+using MPI, NLsolve, Format, DelimitedFiles, Dates
 import Random: shuffle!, seed!
 import LinearAlgebra: Transpose
 

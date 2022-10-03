@@ -238,9 +238,9 @@ function iterate!(mspso::DMSPSO, opts::SwarmOptions)
         end
 
         # Print debug information
-        if opts.printDebugInfo == true
-            printDebugInfo(mspso,opts)
-        end
+        #if opts.printDebugInfo == true
+        #    printDebugInfo(mspso,opts)
+        #end
 
         # Reset or stop if commanded
         if statusFlag == RESET
@@ -504,7 +504,7 @@ function printStatus(statusPack::StatusPacket, iter, time)
     return nothing
 end
 
-function printDebugInfo(mspso::DMSPSO, opts)
+function printDebugInfo(mspso::DMSPSO, opts, codeLocationID)
     # Output file name  
     fileName = "./dmspso_debug_info_rank" * string(MPI.Comm_rank(mspso.swarmComm)) * ".txt"
     isfile(fileName) && touch(fileName)
@@ -512,8 +512,19 @@ function printDebugInfo(mspso::DMSPSO, opts)
     # Write to file
     f = open(fileName, "a")
 
-    out = read(`top -bn1 -p $(getpid())`, String)
-    print(f, out * "\n\n")
+    if codeLocationID == 1 # Prior to sending communication
+        print(f, "Preparing to communicate\n")
+        print(f, now(Dates.UTC))
+        print(f, "\n")
+    elseif codeLocationID == 2
+        print(f, "Communication finished\n")
+        print(f, now(Dates.UTC))
+        print(f, "\n")
+    end
+
+    # Print CPU and Memory usage info
+    #out = read(`top -bn1 -p $(getpid())`, String)
+    #print(f, out * "\n\n")
     
     close(f)
     return nothing
