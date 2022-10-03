@@ -22,6 +22,7 @@ Base.pop!(tq::TaskQueue)             = pop!(tq.taskVec)
 Base.deleteat!(tq::TaskQueue, i)     = deleteat!(tq.taskVec, i)
 Base.eachindex(tq::TaskQueue)        = eachindex(tq.taskVec)
 Base.getindex(tq::TaskQueue, i)      = tq.taskVec[i]
+Base.length(tq::TaskQueue)           = length(tq.taskVec)
 
 # Removed finished tasks from queue
 function cleanUp!(tq::TaskQueue)
@@ -52,11 +53,13 @@ function start!(s::SolverServer, opts::SolverOptions)
     stopMsgRecved   = false
     while !done 
         # Request message from search algorithm
+        printDebugInfo(s, opts, 1)
         msg::Int = MPI.Recv(Int, MPI.COMM_WORLD)
 
         # Is message is not DONE, get new solutions
         if msg != STOP
             # Loop to recieve all messages
+            printDebugInfo(s,  opts, 2)
             for i in 1:msg
                 MPI.Recv!(buffer, MPI.COMM_WORLD)
                 println(buffer)
@@ -65,16 +68,14 @@ function start!(s::SolverServer, opts::SolverOptions)
                 push!(s.tasks, Threads.@spawn(solve!($(deepcopy(buffer)), $(s.prob.nleqs!), $opts)))
             end
         else
+            printDebugInfo(s, opts, 3)
             stopMsgRecved = true
         end
 
         # Cleanup task queue
+        printDebugInfo(s, opts, 4)
         cleanUp!(s.tasks)
-
-        # Write debug info
-        if opts.printDebugInfo == true
-            printDebugInfo(s, opts)
-        end
+        printDebugInfo(s, opts, 5)
 
         # If stop message has been recieved, wait for all tasks to finish
         # and then exit loop
@@ -100,17 +101,42 @@ function solve!(x0, nleqs!::Function, opts::SolverOptions)
     return nothing
 end
 
-function printDebugInfo(s::SolverServer, opts)
-    # Output file
-    file = "./debug_info_solver_server.txt"
-    isfile(file) && touch(file)
+function printDebugInfo(s::SolverServer, opts, codeLocationID)
+    if opts.printDebugInfo == true
+        # Output file
+        file = "./debug_info_solver_server.txt"
+        isfile(file) && touch(file)
 
-    # Write to file
-    f = open(file, "a")
+        # Write to file
+        f = open(file, "a")
 
-    out = read(`top -bn1 -p $(getpid())`, String)
-    print(f, out * "\n\n")
-    
-    close(f)
+        if codeLocationID == 1
+            print(f, "Waiting to recieve integer\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 2
+            print(f, "Recieved number of new guesses, recieving guesses\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 3
+            print(f, "Stop message recieved\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 4
+            print(f, "Cleaning up task queue\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 5
+            print(f, "Done cleaning queue\n")
+            print(f, "Tasks in queue: $(length(s.tasks))\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        end
+
+        #out = read(`top -bn1 -p $(getpid())`, String)
+        #print(f, out * "\n\n")
+        
+        close(f)
+    end
     return nothing
 end

@@ -272,6 +272,7 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
     numprocs    = MPI.Comm_size(mspso.swarmComm)
 
     # Request info from each process and place in buffer
+    printDebugInfo(mspso, opts, 4)
     for i in 1:numprocs - 1
         data, status = MPI.Recv!(localBuffer, mspso.swarmComm, MPI.Status)
         buffer[:,status.tag + 1] .= localBuffer
@@ -282,6 +283,7 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
     buffer[N + 2, 1] = (resetFlag == true ? 1.0 : 0.0)
 
     # Compute resets
+    printDebugInfo(mspso, opts, 5)
     resets = computeResets(mspso, opts, buffer)
 
     # Increment reset counter
@@ -291,7 +293,7 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
         end
     end
 
-    # Check for stopping conditions (Total max time option not added yet)
+    # Check for stopping conditions 
     stop = false
     if time() - total_t0 > opts.maxTotalTime || mspso.resetCount >= opts.maxResets 
         stop = true
@@ -316,6 +318,7 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
     end
 
     # Send status flags
+    printDebugInfo(mspso, opts, 6)
     for i in 1:numprocs - 1
         if stop == true
             MPI.Send(STOP, mspso.swarmComm; dest = i)
@@ -325,6 +328,7 @@ function communicateMaster!(mspso, opts, resetFlag, buffer, total_t0, statusPack
             MPI.Send(RESET, mspso.swarmComm; dest = i)
         end
     end
+    printDebugInfo(mspso, opts, 7)
     
     # Set master status flag
     if stop == true
@@ -345,10 +349,14 @@ function communicateWorker!(mspso, opts, resetFlag, buffer)
     buffer[N + 2]   = (resetFlag == true ? 1.0 : 0.0)
 
     # Send buffer to master
+    printDebugInfo(mspso, opts, 1)
     MPI.Send(buffer, mspso.swarmComm; dest = 0, tag = mspso.rank)
 
     # Recieve reset message from master
+    printDebugInfo(mspso, opts, 2)
     flag::Int = MPI.Recv(Int, mspso.swarmComm; source = 0) 
+    printDebugInfo(mspso, opts, 3)
+
     return flag
 end
 
@@ -418,14 +426,17 @@ function processSolutions(mspso, opts, resets, buffer; stop = false)
             # Send new solutions to solver process
             if opts.solverComm == true
                 # Send number of new solutions
+                printDebugInfo(mspso, opts, 8)
                 MPI.Send(sum(resets), MPI.COMM_WORLD; dest = opts.solverRank)
 
                 # Send solutions
+                printDebugInfo(mspso, opts, 9)
                 for i in eachindex(resets)
                     if resets[i] == true
                         MPI.Send(@view(buffer[1:N,i]), MPI.COMM_WORLD; dest = opts.solverRank)
                     end
                 end
+                printDebugInfo(mspso, opts, 10)
             end
         end
     else
@@ -505,27 +516,61 @@ function printStatus(statusPack::StatusPacket, iter, time)
 end
 
 function printDebugInfo(mspso::DMSPSO, opts, codeLocationID)
-    # Output file name  
-    fileName = "./dmspso_debug_info_rank" * string(MPI.Comm_rank(mspso.swarmComm)) * ".txt"
-    isfile(fileName) && touch(fileName)
+    if opts.printDebugInfo == true
+        # Output file name  
+        fileName = "./dmspso_debug_info_rank" * string(MPI.Comm_rank(mspso.swarmComm)) * ".txt"
+        isfile(fileName) && touch(fileName)
 
-    # Write to file
-    f = open(fileName, "a")
+        # Write to file
+        f = open(fileName, "a")
 
-    if codeLocationID == 1 # Prior to sending communication
-        print(f, "Preparing to communicate\n")
-        print(f, now(Dates.UTC))
-        print(f, "\n")
-    elseif codeLocationID == 2
-        print(f, "Communication finished\n")
-        print(f, now(Dates.UTC))
-        print(f, "\n")
+        if codeLocationID == 1 
+            print(f, "Worker sending\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 2
+            print(f, "Worker send, waiting to recieve\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 3
+            print(f, "Worker recieved\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 4
+            print(f, "Master recieving\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 5
+            print(f, "Done recieving, computing resets\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 6
+            print(f, "Done computing resets, sending flags\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 7
+            print(f, "Done sending flags\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 8
+            print(f, "Sending solver number of new guesses\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 9
+            print(f, "Done sending number of guesses, sending guesses\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        elseif codeLocationID == 10
+            print(f, "Done sending guesses\n")
+            print(f, now(Dates.UTC))
+            print(f, "\n")
+        end
+
+        # Print CPU and Memory usage info
+        #out = read(`top -bn1 -p $(getpid())`, String)
+        #print(f, out * "\n\n")
+        
+        close(f)
     end
-
-    # Print CPU and Memory usage info
-    #out = read(`top -bn1 -p $(getpid())`, String)
-    #print(f, out * "\n\n")
-    
-    close(f)
     return nothing
 end
