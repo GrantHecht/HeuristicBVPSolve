@@ -35,16 +35,38 @@ function cleanUp!(tq::TaskQueue)
 end
 
 # Wait on all tasks to finish running
-function wait!(tq::TaskQueue)
-    for i in reverse(eachindex(tq))
-        wait(tq.taskVec[i])
-        pop!(tq)
+function wait!(tq::TaskQueue, opts)
+    #for i in reverse(eachindex(tq))
+    #    wait(tq.taskVec[i])
+    #    pop!(tq)
+    #end
+    done = false
+    while !done
+        # Wait for several seconds so we're not looping and printing debug info 
+        # very fast
+        sleep(30.0)
+
+        # Cleanup task queue
+        cleanUp!(tq)
+
+        # Print debug status
+        if opts.printDebugInfo == true
+            f = open("./debug_info_solver_server.txt", "a")
+            print(f, "Waiting for tasks to complete...\n")
+            print(f, "Tasks left: $(length(tq))\n")
+            print(f, now())
+            print(f, "\n")
+            close(f)
+        end
     end
     return nothing
 end
 
 # Function to startup solver
 function start!(s::SolverServer, opts::SolverOptions)
+    # Prepare debug files
+    printDebugInfo(s, opts, 0)
+
     # Allocate buffer
     buffer  = zeros(length(s.prob.LB))
 
@@ -62,10 +84,11 @@ function start!(s::SolverServer, opts::SolverOptions)
             printDebugInfo(s,  opts, 2)
             for i in 1:msg
                 MPI.Recv!(buffer, MPI.COMM_WORLD)
-                println(buffer)
 
                 # Spawn new task and place in queue
+                printDebugInfo(s, opts, 6)
                 push!(s.tasks, Threads.@spawn(solve!($(deepcopy(buffer)), $(s.prob.nleqs!), $opts)))
+                printDebugInfo(s, opts, 7)
             end
         else
             printDebugInfo(s, opts, 3)
@@ -80,7 +103,7 @@ function start!(s::SolverServer, opts::SolverOptions)
         # If stop message has been recieved, wait for all tasks to finish
         # and then exit loop
         if stopMsgRecved
-            wait!(s.tasks)
+            wait!(s.tasks, opts)
             done = true
         end
     end
@@ -108,28 +131,40 @@ function printDebugInfo(s::SolverServer, opts, codeLocationID)
         isfile(file) && touch(file)
 
         # Write to file
-        f = open(file, "a")
+        if codeLocationID > 0
+            f = open(file, "a")
+        else
+            f = open(file, "w")
+        end
 
         if codeLocationID == 1
             print(f, "Waiting to recieve integer\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 2
             print(f, "Recieved number of new guesses, recieving guesses\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 3
             print(f, "Stop message recieved\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 4
             print(f, "Cleaning up task queue\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 5
             print(f, "Done cleaning queue\n")
             print(f, "Tasks in queue: $(length(s.tasks))\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
+            print(f, "\n")
+        elseif codeLocationID == 6
+            print(f, "Recieved guess, starting task\n")
+            print(f, now())
+            print(f, "\n")
+        elseif codeLocationID == 7
+            print(f, "New task started\n")
+            print(f, now())
             print(f, "\n")
         end
 

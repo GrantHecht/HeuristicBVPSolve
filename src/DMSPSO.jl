@@ -79,6 +79,9 @@ function _optimize!(mspso::DMSPSO, opts::SwarmOptions)
     # Check communication
     checkComm(mspso, opts)
 
+    # Prepare debug files
+    printDebugInfo(mspso, opts, 0)
+
     # Initialize swarms
     initialize!(mspso, opts)
 
@@ -522,47 +525,51 @@ function printDebugInfo(mspso::DMSPSO, opts, codeLocationID)
         isfile(fileName) && touch(fileName)
 
         # Write to file
-        f = open(fileName, "a")
+        if codeLocationID > 0
+            f = open(fileName, "a")
+        else
+            f = open(fileName, "w")
+        end
 
         if codeLocationID == 1 
             print(f, "Worker sending\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 2
             print(f, "Worker send, waiting to recieve\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 3
             print(f, "Worker recieved\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 4
             print(f, "Master recieving\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 5
             print(f, "Done recieving, computing resets\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 6
             print(f, "Done computing resets, sending flags\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 7
             print(f, "Done sending flags\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 8
             print(f, "Sending solver number of new guesses\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 9
             print(f, "Done sending number of guesses, sending guesses\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         elseif codeLocationID == 10
             print(f, "Done sending guesses\n")
-            print(f, now(Dates.UTC))
+            print(f, now())
             print(f, "\n")
         end
 
