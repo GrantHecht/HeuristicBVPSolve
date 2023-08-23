@@ -12,8 +12,11 @@ struct SolverServer{fType,nleqsType,S}
     # Task queue
     tasks::TaskQueue
 
+    # File IO lock
+    lk::ReentrantLock
+
     SolverServer(prob::Problem{fType,nleqsType,S}) where {fType,nleqsType,S} =   
-        new{fType,nleqsType,S}(prob, TaskQueue())
+    new{fType,nleqsType,S}(prob, TaskQueue(), ReentrantLock())
 end
 
 # Task queue methods
@@ -36,15 +39,12 @@ end
 
 # Wait on all tasks to finish running
 function wait!(tq::TaskQueue, opts)
-    #for i in reverse(eachindex(tq))
-    #    wait(tq.taskVec[i])
-    #    pop!(tq)
-    #end
+    t0   = time()
     done = false
     while !done
         # Wait for several seconds so we're not looping and printing debug info 
         # very fast
-        sleep(30.0)
+        sleep(60.0)
 
         # Cleanup task queue
         cleanUp!(tq)
@@ -54,9 +54,15 @@ function wait!(tq::TaskQueue, opts)
             f = open("./debug_info_solver_server.txt", "a")
             print(f, "Waiting for tasks to complete...\n")
             print(f, "Tasks left: $(length(tq))\n")
+            print(f, "Time left: $(opts.maxWaitTime - (time() - t0))\n")
             print(f, now())
             print(f, "\n")
             close(f)
+        end
+
+        # Check if we're done waiting
+        if length(tq) == 0 || (time() - t0)  > opts.maxWaitTime
+            done = true
         end
     end
     return nothing
@@ -87,7 +93,11 @@ function start!(s::SolverServer, opts::SolverOptions)
 
                 # Spawn new task and place in queue
                 printDebugInfo(s, opts, 6)
-                push!(s.tasks, Threads.@spawn(solve!($(deepcopy(buffer)), $(s.prob.nleqs!), $opts)))
+
+                guess   = deepcopy(buffer)
+                newTask = Threads.@spawn solve!(guess, s.prob.nleqs!, opts, s.lk)
+                push!(s.tasks, newTask)
+                
                 printDebugInfo(s, opts, 7)
             end
         else
@@ -110,16 +120,21 @@ function start!(s::SolverServer, opts::SolverOptions)
     return nothing
 end
 
-function solve!(x0, nleqs!::Function, opts::SolverOptions)
+function solve!(x0, nleqs!::Function, opts::SolverOptions, lk::ReentrantLock)
     sol = nlsolve(only_fj!(nleqs!), x0; 
         show_trace = false, factor = 3.0, ftol = 1e-8) 
-    
+
     # Write solution to file
     if opts.solOutputFlag == true
-        f = open(opts.solOutputFile, "a")
-        println(f, "Success: $(sol.f_converged), Initial Guess: $x0")
-        writedlm(f, Transpose(sol.zero), ",")
-        close(f)
+        lock(lk)
+        try
+            f = open(opts.solOutputFile, "a")
+            println(f, "Success: $(sol.f_converged), Initial Guess: $x0")
+            writedlm(f, Transpose(sol.zero), ",")
+            close(f)
+        finally
+            unlock(lk)
+        end
     end
     return nothing
 end
@@ -160,6 +175,7 @@ function printDebugInfo(s::SolverServer, opts, codeLocationID)
             print(f, "\n")
         elseif codeLocationID == 6
             print(f, "Recieved guess, starting task\n")
+            print(f, "Tasks in queue: $(length(s.tasks))\n")
             print(f, now())
             print(f, "\n")
         elseif codeLocationID == 7
